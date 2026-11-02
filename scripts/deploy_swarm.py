@@ -63,7 +63,9 @@ def main():
         raise SystemExit('Services did not converge within 900 seconds')
     print(services, flush=True)
     # Uses the source and restore services across the overlay network, never mocks.
-    subprocess.run(['docker', 'exec', panel, 'python', 'manage.py', 'smoke_backup'],
+    # docker exec does not inherit exports made by the container entrypoint.
+    subprocess.run(['docker', 'exec', panel, 'sh', '-c',
+                    '. /usr/local/bin/load-secrets; exec python manage.py smoke_backup'],
                    check=True, timeout=300)
     proxy_id = docker('ps', '-q', '--filter', f'label=com.docker.swarm.service.name={STACK}_proxy')
     proxy = json.loads(docker('inspect', proxy_id))[0]
