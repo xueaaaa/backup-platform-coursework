@@ -86,6 +86,12 @@ ssh -i "$env:USERPROFILE/.ssh/coursework_backup_ed25519" -N -L 8081:127.0.0.1:18
 
 Оставьте окно открытым и перейдите на <http://localhost:8081>. Логин `admin`, пароль — облачный `ADMIN_PASSWORD` из `/root/coursework-backup/.env.cloud`, который отличается от локального. Публичный HTTP-доступ и домен для этой демонстрации не нужны.
 
+На текущем компьютере отдельная копия облачных учётных данных сохранена в локальном `.env.cloud` (исключён из Git и контекста Docker). Для повторного открытия туннеля можно выполнить из корня проекта:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\docs\connect-cloud.ps1 -Server АДРЕС_VPS
+```
+
 ## Доказательства для отчёта
 
 На VPS, где задан `DOCKER_HOST=tcp://127.0.0.1:23750`:

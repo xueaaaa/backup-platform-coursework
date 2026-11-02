@@ -1,0 +1,16 @@
+2026-11-02T07:24:10+00:00
+ID                            HOSTNAME             STATUS    AVAILABILITY   MANAGER STATUS   ENGINE VERSION
+p0zpcyfs9z43ful2sv74n5zms *   coursework-manager   Ready     Active         Leader           28.5.2
+vqwcxzoj5j12ln9cd8m4wf0xw     coursework-worker    Ready     Active                          28.5.2
+ID             NAME                                 MODE         REPLICAS   IMAGE                                                                                        PORTS
+x1hm87xtsl0z   coursework-backup-cloud_panel        replicated   1/1        ghcr.io/xueaaaa/backup-platform-coursework-panel:8a774e743900b76f55ca42f918e06733380ccfc0    
+htfgya2regws   coursework-backup-cloud_proxy        replicated   1/1        nginx:stable-bookworm                                                                        
+g618e369tjg5   coursework-backup-cloud_restore-db   replicated   1/1        postgres:15-bookworm                                                                         
+rrd47qky9qzt   coursework-backup-cloud_scheduler    replicated   1/1        ghcr.io/xueaaaa/backup-platform-coursework-engine:8a774e743900b76f55ca42f918e06733380ccfc0   
+rqc93vrilmd1   coursework-backup-cloud_source-db    replicated   1/1        postgres:15-bookworm                                                                         
+coursework-backup-cloud_panel.1 | coursework-manager | Running 7 minutes ago
+coursework-backup-cloud_proxy.1 | coursework-manager | Running about a minute ago
+coursework-backup-cloud_restore-db.1 | coursework-worker | Running 10 minutes ago
+coursework-backup-cloud_scheduler.1 | coursework-manager | Running 9 minutes ago
+coursework-backup-cloud_source-db.1 | coursework-manager | Running 8 minutes ago
+Network: overlay options={"com.docker.network.driver.overlay.vxlanid_list":"4097","encrypted":""}

@@ -1,0 +1,11 @@
+Workflow: https://github.com/xueaaaa/backup-platform-coursework/actions/runs/41404167071
+Commit: 8a774e743900b76f55ca42f918e06733380ccfc0
+All jobs: success
+
+2026-11-02T07:06:56.7087720Z System check identified no issues (0 silenced).
+2026-11-02T07:07:06.4983378Z Ran 19 tests in 8.907s
+2026-11-02T07:07:06.4985922Z System check identified no issues (0 silenced).
+2026-11-02T07:08:47.6711949Z PASS: архив создан, проверен и восстановлен; тестовые записи совпадают; исходная БД не изменена.
+
+2026-11-02T07:18:59.9415143Z PASS: архив создан, проверен и восстановлен; тестовые записи совпадают; исходная БД не изменена.
+2026-11-02T07:19:05.2711763Z PASS: two distinct Swarm nodes, five services and real backup/restore. Proxy internal IP: 10.0.1.27

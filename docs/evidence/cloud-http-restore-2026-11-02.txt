@@ -1,0 +1,4 @@
+PASS: cloud source and worker restore-db match: 3 rows
+Scheduled archive: plan-1-2026-11-02T10:25:07.217840
+Successful HTTP restore audit: 2026-11-02T07:26:36.767173+00:00 2026-11-02T07:26:48.165740+00:00
+Schedule: */5 * * * * Enabled: True
