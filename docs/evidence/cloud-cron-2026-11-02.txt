@@ -3,4 +3,3 @@ CLOUD TIME: 2026-11-02T10:25:54.852752
 /repository/plan-1: Ignoring configured "read_special" value of false, as true is needed for database hooks.
 2026-11-02T10:25:10+03:00
 EXIT_CODE=0
-
