@@ -1,0 +1,129 @@
+version: '3.8'
+
+# State stays on explicitly labelled nodes. This is an educational cluster, not HA storage.
+x-primary: &primary
+  replicas: 1
+  placement:
+    constraints: [node.labels.backup.data == true]
+  update_config: {parallelism: 1, order: stop-first, failure_action: rollback}
+  rollback_config: {parallelism: 1, order: stop-first}
+  restart_policy: {condition: any, delay: 5s}
+x-backup-env: &backup-env
+  TZ: Europe/Moscow
+
+services:
+  panel:
+    image: ${PANEL_IMAGE:?Set PANEL_IMAGE to a published image}
+    environment:
+      <<: *backup-env
+      ADMIN_USERNAME: admin
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      CSRF_TRUSTED_ORIGINS: http://localhost:8081,http://127.0.0.1:8081
+    secrets: [DJANGO_SECRET_KEY, ADMIN_PASSWORD, SOURCE_DB_PASSWORD, RESTORE_DB_PASSWORD, BORG_PASSPHRASE]
+    volumes:
+      - panel-state:/state
+      - backup-configs:/configs
+      - backup-cron:/cron
+      - backup-logs:/logs
+      - backup-repository:/repository
+      - backup-locks:/locks
+      - borg-home:/borg-home
+    networks: [backup-net]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      start_period: 45s
+    deploy: *primary
+  scheduler:
+    image: ${ENGINE_IMAGE:?Set ENGINE_IMAGE to a published image}
+    environment: *backup-env
+    secrets: [SOURCE_DB_PASSWORD, RESTORE_DB_PASSWORD, BORG_PASSPHRASE]
+    volumes:
+      - backup-configs:/configs:ro
+      - backup-cron:/etc/cron.d:ro
+      - backup-logs:/logs
+      - backup-repository:/repository
+      - backup-locks:/locks
+      - borg-home:/borg-home
+    stop_grace_period: 1m
+    networks: [backup-net]
+    deploy: *primary
+  source-db:
+    image: postgres:15-bookworm
+    environment:
+      POSTGRES_DB: coursework
+      POSTGRES_USER: backup
+      POSTGRES_PASSWORD_FILE: /run/secrets/SOURCE_DB_PASSWORD
+      TZ: Europe/Moscow
+    secrets: [SOURCE_DB_PASSWORD]
+    configs:
+      - source: seed
+        target: /docker-entrypoint-initdb.d/seed.sql
+    volumes: [source-data:/var/lib/postgresql/data]
+    networks: [backup-net]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U backup -d coursework']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    deploy: *primary
+  restore-db:
+    image: postgres:15-bookworm
+    environment:
+      POSTGRES_DB: coursework
+      POSTGRES_USER: backup
+      POSTGRES_PASSWORD_FILE: /run/secrets/RESTORE_DB_PASSWORD
+      TZ: Europe/Moscow
+    secrets: [RESTORE_DB_PASSWORD]
+    volumes: [restore-data:/var/lib/postgresql/data]
+    networks: [backup-net]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U backup -d coursework']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.backup.restore == true]
+      update_config: {parallelism: 1, order: stop-first, failure_action: rollback}
+      restart_policy: {condition: any, delay: 5s}
+  proxy:
+    image: nginx:stable-bookworm
+    configs:
+      - source: nginx
+        target: /etc/nginx/conf.d/default.conf
+    volumes: [panel-state:/state:ro]
+    networks: [backup-net]
+    # No public port: access through SSH forwarding to this container's IP on the data node.
+    deploy: *primary
+
+networks:
+  backup-net:
+    driver: overlay
+    driver_opts: {encrypted: ''}
+configs:
+  seed:
+    name: coursework-seed-${CONFIG_VERSION:-v1}
+    file: ./infra/seed.sql
+  nginx:
+    name: coursework-nginx-${CONFIG_VERSION:-v1}
+    file: ./infra/nginx.conf
+secrets:
+  DJANGO_SECRET_KEY: {external: true, name: coursework-DJANGO_SECRET_KEY}
+  ADMIN_PASSWORD: {external: true, name: coursework-ADMIN_PASSWORD}
+  SOURCE_DB_PASSWORD: {external: true, name: coursework-SOURCE_DB_PASSWORD}
+  RESTORE_DB_PASSWORD: {external: true, name: coursework-RESTORE_DB_PASSWORD}
+  BORG_PASSPHRASE: {external: true, name: coursework-BORG_PASSPHRASE}
+volumes:
+  panel-state:
+  backup-configs:
+  backup-cron:
+  backup-logs:
+  backup-repository:
+  backup-locks:
+  borg-home:
+  source-data:
+  restore-data:

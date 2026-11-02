@@ -1,0 +1,38 @@
+name: coursework-swarm-lab
+services:
+  manager:
+    image: docker:28-dind
+    hostname: coursework-manager
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ''
+    command: [dockerd, --host=unix:///var/run/docker.sock, --host=tcp://0.0.0.0:2375]
+    ports:
+      - '127.0.0.1:23750:2375'
+      - '127.0.0.1:18081:8081'
+    volumes: [manager-data:/var/lib/docker]
+    networks: [nodes]
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 1g
+    cpus: 1.0
+  worker:
+    image: docker:28-dind
+    hostname: coursework-worker
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ''
+    command: [dockerd, --host=unix:///var/run/docker.sock, --host=tcp://0.0.0.0:2375]
+    ports: ['127.0.0.1:23751:2375']
+    volumes: [worker-data:/var/lib/docker]
+    networks: [nodes]
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 512m
+    cpus: 0.5
+networks:
+  nodes:
+    driver: bridge
+volumes:
+  manager-data:
+  worker-data:

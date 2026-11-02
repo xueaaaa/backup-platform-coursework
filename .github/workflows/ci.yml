@@ -1,0 +1,99 @@
+name: Test, publish and deploy
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test
+      - run: docker build --target panel -t coursework-panel:test .
+      - run: docker build --target engine -t coursework-engine:test .
+      - run: python scripts/prepare_env.py
+      - run: docker compose config --quiet
+      - run: PANEL_IMAGE=coursework-panel:test ENGINE_IMAGE=coursework-engine:test docker stack config -c stack.yaml > /dev/null
+      - run: docker compose up --build -d --wait --wait-timeout 180
+      - run: docker compose exec -T panel python manage.py smoke_backup
+      - run: docker compose exec -T scheduler /usr/local/bin/run-backup 1
+      - if: always()
+        run: docker compose logs --tail=100
+      - if: always()
+        run: docker compose down
+  publish:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      panel: ${{ steps.images.outputs.panel }}
+      engine: ${{ steps.images.outputs.engine }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: images
+        shell: bash
+        run: |
+          namespace="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "panel=$namespace-panel:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "engine=$namespace-engine:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Login to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build and publish immutable release tags
+        env:
+          PANEL_IMAGE: ${{ steps.images.outputs.panel }}
+          ENGINE_IMAGE: ${{ steps.images.outputs.engine }}
+        run: |
+          docker build --target panel --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" -t "$PANEL_IMAGE" .
+          docker build --target engine --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" -t "$ENGINE_IMAGE" .
+          docker push "$PANEL_IMAGE"
+          docker push "$ENGINE_IMAGE"
+  deploy:
+    needs: publish
+    permissions:
+      contents: read
+      packages: read
+    # Set the repository variable only after initialising the two-node cloud cluster.
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: coursework-cloud
+    concurrency:
+      group: coursework-cloud
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH identity
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Transfer release and deploy the Swarm stack
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+          PANEL_IMAGE: ${{ needs.publish.outputs.panel }}
+          ENGINE_IMAGE: ${{ needs.publish.outputs.engine }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="$VPS_USER@$VPS_HOST"
+          git archive --format=tar HEAD | gzip > release.tar.gz
+          ssh -o BatchMode=yes -p "$VPS_PORT" "$remote" 'mkdir -p ~/coursework-backup/releases'
+          scp -o BatchMode=yes -P "$VPS_PORT" release.tar.gz "$remote:coursework-backup/releases/$GITHUB_SHA.tar.gz"
+          printf '%s' "$GH_TOKEN" | ssh -o BatchMode=yes -p "$VPS_PORT" "$remote" "DOCKER_HOST=tcp://127.0.0.1:23750 docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
+          ssh -o BatchMode=yes -p "$VPS_PORT" "$remote" "mkdir -p ~/coursework-backup/releases/$GITHUB_SHA && tar -xzf ~/coursework-backup/releases/$GITHUB_SHA.tar.gz -C ~/coursework-backup/releases/$GITHUB_SHA && cd ~/coursework-backup/releases/$GITHUB_SHA && DOCKER_HOST=tcp://127.0.0.1:23750 PANEL_IMAGE='$PANEL_IMAGE' ENGINE_IMAGE='$ENGINE_IMAGE' CONFIG_VERSION='$GITHUB_SHA' python3 scripts/deploy_swarm.py --lab"

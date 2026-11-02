@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  proxy:
+    # This port is inside the manager container; the outer Compose binds it to VPS loopback.
+    ports:
+      - target: 80
+        published: 8081
+        protocol: tcp
+        mode: host
