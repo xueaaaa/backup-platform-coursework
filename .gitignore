@@ -9,3 +9,4 @@ state/
 *.key
 screenshots/
 *.tar.gz
+/README.md
